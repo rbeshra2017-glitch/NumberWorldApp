@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Extractor Dynamic Columns</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.min.js"></script>
+<style>
+body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#fff;}
+#currentTime{font-size:13px;color:#fff;background:linear-gradient(135deg,#6b73ff,#000dff);padding:8px 15px;border-radius:12px;text-align:center;margin-bottom:15px;font-weight:bold;}
+.top-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:20px;gap:10px;}
+input[type=file]{flex:1;padding:10px;border-radius:12px;border:none;font-size:14px;background:linear-gradient(145deg,#ff9a9e,#fad0c4);box-shadow:4px4px8px #c1c1c1,-4px-4px8px #fff;color:#333;text-align:center;cursor:pointer;transition:0.2s;}
+input[type=file]:hover{transform:translateY(-2px);box-shadow:6px6px10px #c1c1c1,-6px-6px10px #fff;}
+input[type=file]:active{transform:translateY(1px);box-shadow:inset 3px 3px 6px #c1c1c1,inset -3px -3px 6px #fff;}
+.toggleBtn, #randomToggle, #manualGenerate{padding:8px 16px;font-size:14px;cursor:pointer;border:none;border-radius:12px;transition:0.2s;color:#fff;box-shadow:4px4px8px rgba(0,0,0,0.2),-4px-4px8px rgba(255,255,255,0.5);}
+.toggleBtn:hover,#randomToggle:hover,#manualGenerate:hover{transform:translateY(-2px);}
+.toggleBtn:active,#randomToggle:active,#manualGenerate:active{transform:translateY(1px);}
+#results{display:flex;gap:10px;flex-wrap:wrap;display:none;margin-top:20px;}
+.column{background:white;padding:10px;border-radius:10px;box-shadow:4px4px10px rgba(0,0,0,0.15),-4px-4px10px rgba(255,255,255,0.5);min-height:300px;overflow:auto;font-size:12px;flex:1 1 150px;}
+.column h3{text-align:center;margin-bottom:10px;font-size:14px;border-bottom:1px solid #ccc;padding-bottom:5px;}
+.date-block{margin-bottom:8px;padding:5px;border-radius:5px;box-shadow:2px2px5px rgba(0,0,0,0.1);}
+.date-block b{display:block;margin-bottom:5px;font-size:12px;}
+.hr-gap{border-top:1px dashed #999;margin:5px 0;}
+#randomContainer{margin-top:20px;display:none;flex-direction:column;gap:5px;}
+#randomBox{background:white;border-radius:10px;padding:10px;font-size:12px;box-shadow:4px4px10px rgba(0,0,0,0.15),-4px-4px10px rgba(255,255,255,0.5);}
+#randomBox b{display:block;margin-bottom:5px;text-align:center;}
+.random-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;}
+.random-grid div{text-align:center;border:1px solid #ccc;border-radius:5px;padding:5px 0;font-size:12px;font-weight:bold;background:#fafafa;}
+#manualSection{margin-top:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+#manualSection input,#manualSection button{padding:6px 10px;border-radius:8px;border:none;font-size:14px;}
+#manualSection button{background:linear-gradient(145deg,#ffbb33,#ff8800);color:#fff;cursor:pointer;box-shadow:4px4px8px rgba(0,0,0,0.2),-4px-4px8px rgba(255,255,255,0.5);}
+#manualResults{margin-top:10px;}
+.manual-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;}
+.manual-grid div{padding:5px 0;border-radius:5px;text-align:center;font-weight:bold;color:#fff;font-size:13px;box-shadow:2px2px5px rgba(0,0,0,0.2);}
+</style>
+</head>
+<body>
+<div id="currentTime"></div>
+
+<div class="top-row">
+  <input type="file" id="pdfFiles" accept=".pdf" multiple>
+  <button id="toggleBtn" class="toggleBtn" style="background: linear-gradient(145deg,#6b73ff,#000dff)">Show Extracted Numbers</button>
+</div>
+
+<div id="results"></div>
+
+<div id="randomContainer">
+  <button id="randomToggle">Show/Hide Numbers</button>
+  <div id="randomBox">
+    <b>50 Expected Generated Numbers</b>
+    <div id="newNumbers" class="random-grid"></div>
+  </div>
+</div>
+
+<div id="manualSection">
+  <input type="number" id="manualStart" placeholder="Start">
+  <input type="number" id="manualEnd" placeholder="End">
+  <input type="number" id="manualQty" placeholder="Quantity" min="1">
+  <button id="manualGenerate">Generate</button>
+</div>
+<div id="manualResults"></div>
+
+<script>
+const pdfInput=document.getElementById('pdfFiles');
+const toggleBtn=document.getElementById('toggleBtn');
+const resultsDiv=document.getElementById('results');
+const newNumbersDiv=document.getElementById('newNumbers');
+const randomContainer=document.getElementById('randomContainer');
+const randomToggle=document.getElementById('randomToggle');
+const manualStart=document.getElementById('manualStart');
+const manualEnd=document.getElementById('manualEnd');
+const manualQty=document.getElementById('manualQty');
+const manualGenerate=document.getElementById('manualGenerate');
+const manualResults=document.getElementById('manualResults');
+const currentTime=document.getElementById('currentTime');
+
+let preparedColumns={}; 
+let latestNumbers=new Set();
+
+// Update current time
+function updateTime(){ 
+    const now=new Date(); 
+    currentTime.textContent="Current: "+now.toLocaleString();
+}
+updateTime(); setInterval(updateTime,60000);
+
+// Toggle extracted numbers
+toggleBtn.addEventListener('click',()=>{
+    if(resultsDiv.style.display==="none"){
+        resultsDiv.style.display="flex";
+        toggleBtn.textContent="Hide Extracted Numbers";
+        renderColumns();
+    }else{
+        resultsDiv.style.display="none";
+        toggleBtn.textContent="Show Extracted Numbers";
+    }
+});
+
+// Render columns dynamically
+function renderColumns(){
+    resultsDiv.innerHTML="";
+    const keys=Object.keys(preparedColumns).sort((a,b)=>new Date(a)-new Date(b));
+    keys.forEach(key=>{
+        const col=document.createElement('div');
+        col.className="column";
+        col.innerHTML=`<h3>${key}</h3>`+preparedColumns[key].join("<br>");
+        resultsDiv.appendChild(col);
+    });
+}
+
+// Generate 50 random numbers avoiding last 3 digits
+function generateRandomNumbers(existing,count=50){
+    const last3=new Set([...existing].map(n=>n%1000));
+    const allSet=new Set([...existing]);
+    const newNums=[];
+    while(newNums.length<count){
+        let n=Math.floor(Math.random()*10000);
+        if(!last3.has(n%1000) && !allSet.has(n)){
+            newNums.push(n.toString().padStart(4,'0'));
+            last3.add(n%1000); allSet.add(n);
+        }
+    }
+    return newNums.sort((a,b)=>a-b);
+}
+
+// Toggle auto numbers
+randomToggle.addEventListener('click',()=>{
+    if(newNumbersDiv.style.display==="none") newNumbersDiv.style.display="grid";
+    else newNumbersDiv.style.display="none";
+});
+
+// Manual generator
+manualGenerate.addEventListener('click',()=>{
+    const start=parseInt(manualStart.value);
+    const end=parseInt(manualEnd.value);
+    const qty=parseInt(manualQty.value);
+    if(isNaN(start)||isNaN(end)||start>=end||isNaN(qty)||qty<1){alert("Invalid input");return;}
+    const nums=[];
+    while(nums.length<qty){
+        const n=Math.floor(Math.random()*(end-start+1))+start;
+        if(!nums.includes(n)) nums.push(n);
+    }
+    manualResults.innerHTML="";
+    const div=document.createElement('div');
+    div.className="manual-grid";
+    nums.forEach(n=>{
+        const d=document.createElement('div');
+        d.textContent=n;
+        d.style.background="#"+Math.floor(Math.random()*16777215).toString(16);
+        div.appendChild(d);
+    });
+    manualResults.appendChild(div);
+});
+
+// PDF Upload
+pdfInput.addEventListener('change',async ()=>{
+    const files=Array.from(pdfInput.files).slice(0,9);
+    if(files.length===0) return;
+    resultsDiv.style.display="none"; toggleBtn.textContent="Show Extracted Numbers";
+    randomContainer.style.display="none"; newNumbersDiv.innerHTML=""; preparedColumns={}; latestNumbers=new Set();
+
+    let tempColumns={}; 
+    let allExtracted=[];
+
+    for(const file of files){
+        const arrayBuffer=await file.arrayBuffer();
+        const pdf=await pdfjsLib.getDocument(arrayBuffer).promise;
+        const fname=file.name.toLowerCase();
+        let timeKey="";
+        if(fname.includes('mn')||fname.includes('me')) timeKey="1 PM";
+        else if(fname.includes('de')||fname.includes('dn')) timeKey="6 PM";
+        else if(fname.includes('ed')||fname.includes('en')) timeKey="8 PM";
+        else timeKey="Unknown Time";
+
+        for(let i=1;i<=pdf.numPages;i++){
+            const page=await pdf.getPage(i);
+            const textContent=await page.getTextContent();
+            const pageText=textContent.items.map(item=>item.str).join(" ");
+            const numRegex=/\b\d{4}\b/g;
+            const numbers=(pageText.match(numRegex)||[]).map(n=>parseInt(n));
+            const dateRegex=/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s\d{1,2},?\s\d{2,4}\b/gi;
+            const datesFound=pageText.match(dateRegex)||[];
+            const date=datesFound[0]||"Unknown Date";
+
+            const colKey=(files.length>1)? date+" ("+timeKey+")":timeKey;
+
+            if(!tempColumns[colKey]) tempColumns[colKey]=[];
+            tempColumns[colKey].push(numbers.sort((a,b)=>a-b));
+            allExtracted.push(...numbers);
+        }
+    }
+
+    // Build HTML for each column
+    for(const key in tempColumns){
+        let html="";
+        tempColumns[key].forEach(arr=>{
+            html+='<div class="date-block">'+arr.join("<br>")+'<div class="hr-gap"></div></div>';
+        });
+        preparedColumns[key]=[html];
+    }
+
+    // Generate 50 auto numbers
+    const newRand=generateRandomNumbers(allExtracted,50);
+    newNumbersDiv.innerHTML="";
+    newRand.forEach(n=>{
+        const div=document.createElement('div'); div.textContent=n; newNumbersDiv.appendChild(div);
+    });
+    randomContainer.style.display="flex"; newNumbersDiv.style.display="grid";
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+/* style.css */
+
+/* Body & general styling */
+body {
+  background-color: #ffffff;
+  font-family: Arial, sans-serif;
+  padding: 20px;
+}
+
+/* Buttons 3D look */
+button {
+  background: linear-gradient(145deg, #ff9a9e, #fad0c4);
+  border: none;
+  padding: 10px 15px;
+  border-radius: 12px;
+  box-shadow: 4px 4px 8px #c1c1c1, -4px -4px 8px #ffffff;
+  font-weight: bold;
+  cursor: pointer;
+}
+button:hover { transform: translateY(-2px); }
+button:active { transform: translateY(1px); }
+
+/* Other CSS from your original code ... */
